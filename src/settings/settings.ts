@@ -4,6 +4,8 @@
 // placeholder in `botTokenPlaceholder` (Environment Keys holds the value), never both.
 import { parsePersistedApproval } from "../approvals/store";
 import type { PersistedApproval } from "../approvals/types";
+import { parsePersistedQuestion } from "../questions/store";
+import type { PersistedQuestion } from "../questions/types";
 import { asBoolean, asInt, asString, isRecord } from "../util/guards";
 
 export const SETTINGS_SCHEMA_VERSION = 2;
@@ -19,6 +21,7 @@ export type HistoryOutcome =
   | "requested"
   | "approved"
   | "rejected"
+  | "answered"
   | "interrupted";
 
 export interface HistoryEntry {
@@ -32,6 +35,13 @@ export interface HistoryEntry {
   snippet: string;
   /** "date time" text of an entry migrated from 1.0. */
   legacyTime?: string;
+}
+
+export const NOTIFY_EVENTS = ["conclusao_desenvolvimento", "pedidos_aprovacao", "avisos"] as const;
+export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
+
+export function isNotifyEvent(value: unknown): value is NotifyEvent {
+  return typeof value === "string" && (NOTIFY_EVENTS as readonly string[]).includes(value);
 }
 
 export interface GatewaySettings {
@@ -71,9 +81,14 @@ export interface GatewaySettings {
   /** Lets agents use templates when the AI Templates plugin is active. */
   allowTemplates: boolean;
 
+  /** Events the user wants to hear about (guided setup answer; informational for now). */
+  notifyEvents: NotifyEvent[];
+
   // State
   recentHistory: HistoryEntry[];
   approvals: PersistedApproval[];
+  /** Questions asked through telegram_ask_question (pending ones survive a reload). */
+  questions: PersistedQuestion[];
 }
 
 export const DEFAULT_SETTINGS: GatewaySettings = {
@@ -99,8 +114,10 @@ export const DEFAULT_SETTINGS: GatewaySettings = {
   messageLanguage: "auto",
   approvalExpiryMinutes: 1440,
   allowTemplates: true,
+  notifyEvents: [...NOTIFY_EVENTS],
   recentHistory: [],
   approvals: [],
+  questions: [],
 };
 
 export const LIMITS = {
@@ -144,7 +161,7 @@ function normalizeHistory(value: unknown): HistoryEntry[] {
     const sender = asString(raw.sender) ?? "";
     const recipient = asString(raw.recipient) ?? "";
     if (typeof raw.outcome === "string") {
-      const outcomes: HistoryOutcome[] = ["sent", "blocked", "failed", "requested", "approved", "rejected", "interrupted"];
+      const outcomes: HistoryOutcome[] = ["sent", "blocked", "failed", "requested", "approved", "rejected", "answered", "interrupted"];
       const outcome = outcomes.find((o) => o === raw.outcome) ?? "failed";
       out.push({
         at: typeof raw.at === "number" ? raw.at : 0,
@@ -184,6 +201,16 @@ function normalizeApprovals(value: unknown): PersistedApproval[] {
   for (const raw of value) {
     const approval = parsePersistedApproval(raw);
     if (approval) out.push(approval);
+  }
+  return out;
+}
+
+function normalizeQuestions(value: unknown): PersistedQuestion[] {
+  if (!Array.isArray(value)) return [];
+  const out: PersistedQuestion[] = [];
+  for (const raw of value) {
+    const question = parsePersistedQuestion(raw);
+    if (question) out.push(question);
   }
   return out;
 }
@@ -257,8 +284,12 @@ export function loadSettings(raw: unknown): LoadResult {
       defaults.approvalExpiryMinutes,
     ),
     allowTemplates: asBoolean(data.allowTemplates, defaults.allowTemplates),
+    notifyEvents: Array.isArray(data.notifyEvents)
+      ? [...new Set(data.notifyEvents.filter(isNotifyEvent))]
+      : [...defaults.notifyEvents],
     recentHistory: normalizeHistory(data.recentHistory),
     approvals: normalizeApprovals(data.approvals),
+    questions: normalizeQuestions(data.questions),
   };
   return { settings, migrated, droppedKeys: [...droppedKeys] };
 }

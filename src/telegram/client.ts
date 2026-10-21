@@ -3,6 +3,7 @@ import { isRecord, parseJson } from "../util/guards";
 import type { TelegramTransport } from "./transport";
 import type {
   AnswerCallbackParams,
+  DeleteMessageParams,
   EditMessageParams,
   GetUpdatesParams,
   SendMessageParams,
@@ -50,6 +51,7 @@ export interface TelegramApi {
   sendMessage(params: SendMessageParams): Promise<TelegramMessage>;
   editMessageText(params: EditMessageParams): Promise<void>;
   answerCallbackQuery(params: AnswerCallbackParams): Promise<void>;
+  deleteMessage(params: DeleteMessageParams): Promise<void>;
   getUpdates(params: GetUpdatesParams): Promise<TelegramUpdate[]>;
   getMe(): Promise<TelegramUser>;
 }
@@ -82,6 +84,10 @@ export class TelegramClient implements TelegramApi {
 
   async answerCallbackQuery(params: AnswerCallbackParams): Promise<void> {
     await this.call("answerCallbackQuery", { ...params });
+  }
+
+  async deleteMessage(params: DeleteMessageParams): Promise<void> {
+    await this.call("deleteMessage", { ...params });
   }
 
   async getUpdates(params: GetUpdatesParams): Promise<TelegramUpdate[]> {

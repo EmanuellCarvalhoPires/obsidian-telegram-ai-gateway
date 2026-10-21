@@ -41,7 +41,7 @@ export interface StoreOptions {
 
 function randomId(): string {
   const bytes = new Uint8Array(6);
-  globalThis.crypto.getRandomValues(bytes);
+  window.crypto.getRandomValues(bytes);
   return `apr_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 

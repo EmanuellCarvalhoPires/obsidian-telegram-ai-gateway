@@ -98,6 +98,10 @@ export interface HubToolResult {
 export interface HubCallContext {
   client: ClientContext;
   moduleId: string;
+  /** Aborted when the client cancels the call or closes the connection before the answer. */
+  signal?: AbortSignal;
+  /** Kind of client, detected by the AI Ecosystem from the initialize handshake or the token name. */
+  clientKind?: "claude-code" | "antigravity" | "other";
 }
 
 export interface HubTool {
@@ -106,6 +110,8 @@ export interface HubTool {
   description: string;
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  /** Stays visible while the module still waits for its setup skill to finish. */
+  availableDuringSetup?: boolean;
   annotations?: {
     title?: string;
     readOnlyHint?: boolean;
@@ -208,6 +214,40 @@ export interface AIEcosystemAPI {
 }
 
 // ---------------------------------------------------------------------------
+// AI Ecosystem: hooks service (guided setup)
+// ---------------------------------------------------------------------------
+
+/** Name of the service the AI Ecosystem registers for hooks and the guided module setup. */
+export const HOOKS_SERVICE = "hooks";
+
+export interface HookRuleData {
+  /** environment-variables: allowed host patterns of secrets WITHOUT full access / any host. */
+  hosts?: string[];
+  /** ai-scripts: vault-relative folders whose scripts must run through the plugin. */
+  scriptFolders?: string[];
+  /** ai-templates: vault-relative target path patterns of the templates ({{...}} becomes *). */
+  templateTargets?: string[];
+  /** environment-variables: vault-relative folders of tool notes (Grep stays allowed there). */
+  toolNoteFolders?: string[];
+}
+
+export interface SetupHandler {
+  /** Facts the module detects by itself (never secret values). */
+  detect?(): Promise<Record<string, unknown>>;
+  /** Applies one answer. Returns an error message to refuse it. */
+  save?(key: string, value: unknown): Promise<string | void>;
+  /** Called by ecosystem_setup_complete. ok:false blocks completion and lists what is missing. */
+  validate?(): Promise<{ ok: boolean; missing?: string[] }>;
+}
+
+export interface HooksService {
+  setRuleData(moduleId: string, data: HookRuleData): void;
+  /** Returns an unregister function. */
+  registerSetupHandler(moduleId: string, handler: SetupHandler): () => void;
+  getModuleState(moduleId: string): "pendente_configuracao" | "configurado" | "desativado" | undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Environment Keys 2.0
 // ---------------------------------------------------------------------------
 
@@ -238,6 +278,8 @@ export interface SecretVaultService {
     callerModuleId: string,
   ): Promise<void>;
   redact(text: string): string;
+  /** True when a secret OR a value already uses this name. Absent in older Environment Keys. */
+  nameExists?(name: string): boolean;
   adoptPlaintextSecret(input: {
     ownerModuleId: string;
     field: string;
