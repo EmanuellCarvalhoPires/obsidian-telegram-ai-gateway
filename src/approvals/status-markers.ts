@@ -8,6 +8,9 @@ import type { ApprovalStatus } from "./types";
 
 export type MessageLanguage = "en" | "pt";
 
+/** Lifecycle of a question asked through telegram_ask_question (see src/questions). */
+export type QuestionStatus = "pending" | "answered" | "expired" | "interrupted";
+
 export const STATUS_MARKERS: Record<MessageLanguage, Record<ApprovalStatus, string>> = {
   pt: {
     pending: "⏳ Aguardando",
@@ -22,3 +25,21 @@ export const STATUS_MARKERS: Record<MessageLanguage, Record<ApprovalStatus, stri
     interrupted: "\u{1F6D1} Interrupted",
   },
 };
+
+export const QUESTION_STATUS_MARKERS: Record<MessageLanguage, Record<QuestionStatus, string>> = {
+  pt: {
+    pending: "⏳ Aguardando",
+    answered: "\u{1F4AC} Respondido",
+    expired: "⌛ Expirado",
+    interrupted: "\u{1F6D1} Interrompido",
+  },
+  en: {
+    pending: "⏳ Waiting",
+    answered: "\u{1F4AC} Answered",
+    expired: "⌛ Expired",
+    interrupted: "\u{1F6D1} Interrupted",
+  },
+};
+
+/** Marks written on the buttons of a multiSelect question. */
+export const SELECTION_MARKERS = { on: "☑", off: "☐" } as const;

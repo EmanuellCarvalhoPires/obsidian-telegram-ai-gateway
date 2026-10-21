@@ -4,6 +4,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+if (typeof window === "undefined") {
+  (globalThis as any).window = globalThis;
+}
+
 export const requestUrlMock = {
   handler: async (_req: any): Promise<any> => {
     throw new Error("requestUrl not mocked in this test");

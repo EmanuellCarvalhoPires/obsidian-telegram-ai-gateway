@@ -7,6 +7,7 @@ export default defineConfig({
     alias: { obsidian: fileURLToPath(new URL("./tests/mocks/obsidian.ts", import.meta.url)) },
   },
   test: {
+    setupFiles: [fileURLToPath(new URL("./tests/mocks/obsidian.ts", import.meta.url))],
     include: ["tests/**/*.test.ts"],
     exclude: ["node_modules/**", ".claude/**"],
     testTimeout: 20000,

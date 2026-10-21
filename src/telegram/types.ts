@@ -29,6 +29,8 @@ export interface TelegramMessage {
   from?: TelegramUser;
   text?: string;
   date?: number;
+  /** Set when the message is a reply; Telegram sends it without its own reply_to_message. */
+  reply_to_message?: TelegramMessage;
 }
 
 export interface TelegramCallbackQuery {
@@ -45,11 +47,17 @@ export interface TelegramUpdate {
   callback_query?: TelegramCallbackQuery;
 }
 
+/** Makes the Telegram client open a reply to the message (used to ask for typed text). */
+export interface ForceReplyMarkup {
+  force_reply: true;
+  input_field_placeholder?: string;
+}
+
 export interface SendMessageParams {
   chat_id: string;
   text: string;
   parse_mode?: "HTML";
-  reply_markup?: InlineKeyboardMarkup;
+  reply_markup?: InlineKeyboardMarkup | ForceReplyMarkup;
   disable_notification?: boolean;
 }
 
@@ -60,6 +68,11 @@ export interface EditMessageParams {
   parse_mode?: "HTML";
   /** Omit to remove the buttons. */
   reply_markup?: InlineKeyboardMarkup;
+}
+
+export interface DeleteMessageParams {
+  chat_id: string;
+  message_id: number;
 }
 
 export interface AnswerCallbackParams {

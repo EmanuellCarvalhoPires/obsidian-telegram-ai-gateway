@@ -1,0 +1,98 @@
+/* Styles for Telegram AI Gateway */
+
+.tag-settings-header {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 0.3rem;
+  color: var(--text-accent);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tag-settings-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.tag-history-table {
+  width: 100%;
+  font-size: 0.85em;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.tag-history-table th,
+.tag-history-table td {
+  padding: 6px 10px;
+  border: 1px solid var(--background-modifier-border);
+  text-align: left;
+}
+
+.tag-history-table th {
+  background-color: var(--background-secondary);
+  font-weight: 600;
+}
+
+.tag-history-table tr:nth-child(even) {
+  background-color: var(--background-secondary-alt);
+}
+
+.tag-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 500;
+  background-color: var(--background-secondary);
+  color: var(--text-muted);
+}
+
+.tag-status-pill.mod-success {
+  background-color: rgba(var(--color-green-rgb), 0.15);
+  color: var(--color-green);
+}
+
+.tag-status-pill.mod-warning {
+  background-color: rgba(var(--color-yellow-rgb), 0.15);
+  color: var(--color-yellow);
+}
+
+.tag-status-pill.mod-error {
+  background-color: rgba(var(--color-red-rgb), 0.15);
+  color: var(--color-red);
+}
+
+.tag-modal {
+  max-width: 480px;
+}
+
+.tag-modal-icon {
+  margin-right: 8px;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.tag-muted {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.tag-status-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.tag-status-bar-icon {
+  display: inline-flex;
+  align-items: center;
+}
