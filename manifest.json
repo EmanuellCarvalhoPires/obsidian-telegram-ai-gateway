@@ -1,7 +1,7 @@
 {
   "id": "telegram-ai-gateway",
   "name": "Telegram AI Gateway",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "minAppVersion": "1.13.0",
   "description": "Send notifications and approval requests with buttons to Telegram from AI agents and scripts, with strict security limits.",
   "author": "Emanuell Pires",
