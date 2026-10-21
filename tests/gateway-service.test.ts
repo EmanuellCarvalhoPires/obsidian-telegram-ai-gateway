@@ -17,6 +17,8 @@ describe("GatewayService", () => {
       botToken: "123456:ABC-DEF1234ghIkl-zyx57W2v1u",
       chatId: "12345",
       allowTemplates: opts?.allowTemplates ?? true,
+      // "auto" follows the system language, which is English on CI; the assertions expect Portuguese.
+      messageLanguage: "pt",
     };
 
     const clock = {
