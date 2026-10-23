@@ -119,12 +119,45 @@ export interface HubTool {
     idempotentHint?: boolean;
     openWorldHint?: boolean;
   };
+  /** Index metadata (API 1.1). */
+  categoria?: string;
+  tags?: string[];
+  resumo?: string;
+  efeito?: "leitura" | "cofre" | "externo";
+  exposicao?: "fixa" | "indice";
+  aprovacao?: string;
+  exemplo?: Record<string, unknown>;
   handler: (args: Record<string, unknown>, ctx: HubCallContext) => Promise<HubToolResult>;
 }
 
 export interface HubPromptMessage {
   role: "user" | "assistant";
   content: { type: "text"; text: string };
+}
+
+
+export type ToolEffect = "leitura" | "cofre" | "externo";
+export type ToolExposure = "fixa" | "indice";
+export type ToolKind = "tool" | "script" | "template" | "api";
+
+export interface ToolIndexEntry {
+  name: string;
+  title?: string;
+  description: string;
+  inputSchema?: Record<string, unknown>;
+  annotations?: HubTool["annotations"];
+  kind?: ToolKind;
+  categoria?: string;
+  tags?: string[];
+  resumo?: string;
+  efeito?: ToolEffect;
+  exposicao?: ToolExposure;
+  aprovacao?: string;
+  exemplo?: Record<string, unknown>;
+}
+
+export interface ToolIndexApi {
+  sync(moduleId: string, entries: ToolIndexEntry[]): Promise<void>;
 }
 
 export interface HubPrompt {
@@ -211,6 +244,7 @@ export interface AIEcosystemAPI {
   runScript(options: HubScriptOptions, callerModuleId: string): Promise<ScriptExecutionResult>;
   logActivity(entry: ModuleActivityEntry): void;
   getServerStatus(): { running: boolean; port: number; activeModules: string[] };
+  readonly toolIndex?: ToolIndexApi;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 // MCP tools registered in the AI Ecosystem for Claude Code, Antigravity and scripts.
 import type { HubCallContext, HubTool, HubToolResult } from "../ecosystem/types";
+import { MAX_WAIT_SECONDS } from "../approvals/store";
 import type { GatewayService } from "../gateway/gateway-service";
 import { t } from "../i18n";
 import { PolicyViolationError } from "../policy/policy";
@@ -15,6 +16,46 @@ function jsonResult(structured: Record<string, unknown>): HubToolResult {
   };
 }
 
+/** Default and maximum seconds a tool call may block waiting for a decision. */
+export const DEFAULT_WAIT_SECONDS = 25;
+export const DEFAULT_MAX_WAIT_SECONDS = MAX_WAIT_SECONDS;
+
+export interface ToolOptions {
+  /** Ceiling for wait / wait_seconds, in seconds (default 300). MCP clients with a shorter request timeout need a lower value. */
+  maxWaitSeconds?: number;
+}
+
+/** Compact JSON text only (no structuredContent duplicate). */
+function compactResult(value: Record<string, unknown>): HubToolResult {
+  return { content: [{ type: "text", text: JSON.stringify(value) }] };
+}
+
+function clampWait(value: unknown, max: number, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(0, value)) : fallback;
+}
+
+interface ApprovalLike {
+  id: string;
+  status: string;
+  choice?: string | null;
+}
+
+function slimApproval(a: ApprovalLike): Record<string, unknown> {
+  return a.choice ? { id: a.id, status: a.status, choice: a.choice } : { id: a.id, status: a.status };
+}
+
+interface QuestionLike {
+  id: string;
+  status: string;
+  answers?: unknown;
+}
+
+function slimQuestion(q: QuestionLike): Record<string, unknown> {
+  return q.status === "pending" || q.answers === undefined
+    ? { id: q.id, status: q.status }
+    : { id: q.id, status: q.status, answers: q.answers };
+}
+
 function errorResult(err: unknown): HubToolResult {
   const message = err instanceof PolicyViolationError ? err.message : errorMessage(err);
   return {
@@ -23,71 +64,77 @@ function errorResult(err: unknown): HubToolResult {
   };
 }
 
-export function buildTools(service: GatewayService, templatesAvailable: boolean): HubTool[] {
+export function buildTools(service: GatewayService, templatesAvailable: boolean, options: ToolOptions = {}): HubTool[] {
+  const maxWait = Math.min(MAX_WAIT_SECONDS, Math.max(DEFAULT_WAIT_SECONDS, options.maxWaitSeconds ?? DEFAULT_MAX_WAIT_SECONDS));
+  const waitDescription = `Seconds to block waiting for the decision (max ${maxWait}). Omit to return at once.`;
+  const verboseProperty = { type: "boolean", description: "Return the full record instead of {id,status,choice|answers}." };
+
   const sendProperties: Record<string, unknown> = {
     message: {
       type: "string",
-      description: "Text message to send to Telegram (supports HTML and plain text).",
+      description: "Message text (HTML or plain).",
     },
     urgent: {
       type: "boolean",
-      description: "If true, bypasses quiet hours restrictions.",
+      description: "Bypass quiet hours.",
     },
     silent: {
       type: "boolean",
-      description: "If true, sends without audible notification on recipient device.",
+      description: "Send without sound.",
     },
     chat_id: {
       type: "string",
-      description: "Target Telegram Chat ID. Defaults to the configured owner chat ID.",
+      description: "Chat ID (default: owner).",
     },
   };
 
   const askProperties: Record<string, unknown> = {
     message: {
       type: "string",
-      description: "Question or decision text to present above the buttons.",
+      description: "Text shown above the buttons.",
     },
     options: {
       type: "array",
       items: { type: "string" },
-      description: "List of button options (e.g. ['Aprovar', 'Rejeitar'] or ['Sim', 'Não']).",
+      description: "Button labels, e.g. ['Aprovar','Rejeitar'].",
     },
     urgent: {
       type: "boolean",
-      description: "If true, bypasses quiet hours.",
+      description: "Bypass quiet hours.",
     },
     silent: {
       type: "boolean",
-      description: "If true, sends silently without notification sound.",
+      description: "Send without sound.",
     },
     chat_id: {
       type: "string",
-      description: "Target Telegram Chat ID (defaults to owner chat ID).",
+      description: "Chat ID (default: owner).",
     },
     expires_in_minutes: {
       type: "number",
-      description: "Minutes until this approval expires automatically.",
+      description: "Minutes until it expires.",
     },
+    wait_seconds: { type: "number", description: waitDescription },
+    verbose: verboseProperty,
   };
 
   if (templatesAvailable) {
     sendProperties.template_id = {
       type: "string",
-      description: "ID of the AI Template to render before sending (via AI Templates plugin).",
+      description: "AI Template ID to render first.",
     };
     sendProperties.data = {
       type: "object",
-      description: "Template variables and table payload.",
+      description: "Template variables.",
     };
 
     askProperties.template_id = {
       type: "string",
-      description: "ID of the AI Template to render before sending.",
+      description: "AI Template ID to render first.",
     };
     askProperties.data = {
       type: "object",
-      description: "Template variables and table payload.",
+      description: "Template variables.",
     };
   }
 
@@ -95,8 +142,14 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
     {
       name: "telegram_send_message",
       title: "Send Telegram Notification",
+      categoria: "notificacao",
+      tags: ["telegram", "mensagem", "notificacao"],
+      resumo: "Envia mensagem de notificação via Telegram",
+      efeito: "externo",
+      exposicao: "fixa",
+      aprovacao: "dispensada",
       description:
-        "Send a notification message to Telegram from AI agents. With AI Templates active, accepts template_id and data.",
+        "Send a Telegram notification (template_id and data when AI Templates is active).",
       inputSchema: {
         type: "object",
         properties: sendProperties,
@@ -124,8 +177,14 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
     {
       name: "telegram_ask_approval",
       title: "Ask Approval via Telegram",
+      categoria: "notificacao",
+      tags: ["telegram", "aprovacao", "botoes"],
+      resumo: "Pede aprovação com botões via Telegram",
+      efeito: "externo",
+      exposicao: "fixa",
+      aprovacao: "dispensada",
       description:
-        "Ask for user confirmation or approval with interactive buttons on Telegram. Returns immediately with an approval id in status pending. Poll telegram_get_approval to check the user's decision.",
+        "Ask for approval with buttons on Telegram. With wait_seconds it blocks until decided (long waits need an MCP client timeout above it) and returns {id,status,choice}. Otherwise, or if still undecided, returns status pending with the id: use telegram_get_approval.",
       inputSchema: {
         type: "object",
         properties: askProperties,
@@ -147,7 +206,12 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
             templateId: typeof args.template_id === "string" ? args.template_id : undefined,
             templateData: args.data,
           });
-          return jsonResult({ success: true, ...result });
+          const waitSeconds = clampWait(args.wait_seconds, maxWait);
+          if (waitSeconds > 0 && result.id) {
+            const decided = await service.getApproval(result.id, waitSeconds);
+            if (decided) return args.verbose === true ? jsonResult({ success: true, ...decided }) : compactResult(slimApproval(decided));
+          }
+          return args.verbose === true ? jsonResult({ success: true, ...result }) : compactResult({ id: result.id, status: "pending" });
         } catch (err) {
           return errorResult(err);
         }
@@ -156,8 +220,13 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
     {
       name: "telegram_get_approval",
       title: "Get Telegram Approval Status",
+      categoria: "notificacao",
+      tags: ["telegram", "aprovacao", "status"],
+      resumo: "Consulta status de aprovação do Telegram",
+      efeito: "leitura",
+      exposicao: "indice",
       description:
-        "Check the status of a pending Telegram approval request. Waits up to 25 seconds for a decision if wait is provided. Call repeatedly in a loop until status is no longer pending.",
+        "Get an approval's status, waiting up to wait seconds for a decision. Returns {id,status,choice}; pending means undecided.",
       inputSchema: {
         type: "object",
         properties: {
@@ -167,8 +236,9 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
           },
           wait: {
             type: "number",
-            description: "Seconds to wait for a decision (max 25s, default 25s).",
+            description: `Seconds to wait (max ${maxWait}, default ${DEFAULT_WAIT_SECONDS}).`,
           },
+          verbose: verboseProperty,
         },
         required: ["id"],
         additionalProperties: false,
@@ -176,12 +246,12 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
       handler: async (args: Args): Promise<HubToolResult> => {
         try {
           const id = typeof args.id === "string" ? args.id : "";
-          const wait = typeof args.wait === "number" ? Math.min(25, Math.max(0, args.wait)) : 25;
+          const wait = clampWait(args.wait, maxWait, DEFAULT_WAIT_SECONDS);
           const approval = await service.getApproval(id, wait);
           if (!approval) {
             return errorResult(new Error(`Approval request not found: ${id}`));
           }
-          return jsonResult({ success: true, ...approval });
+          return args.verbose === true ? jsonResult({ success: true, ...approval }) : compactResult(slimApproval(approval));
         } catch (err) {
           return errorResult(err);
         }
@@ -190,6 +260,12 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
     {
       name: "telegram_resolve_approval",
       title: "Resolve Telegram Approval",
+      categoria: "notificacao",
+      tags: ["telegram", "aprovacao", "resolver"],
+      resumo: "Resolve ou cancela aprovação pendente do Telegram",
+      efeito: "externo",
+      exposicao: "indice",
+      aprovacao: "dispensada",
       description:
         "Resolve a pending approval from the agent or terminal (e.g. after user approved directly in chat). Updates the Telegram message to show the decision and removes the buttons.",
       inputSchema: {
@@ -238,8 +314,14 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
     {
       name: "telegram_ask_question",
       title: "Ask Question via Telegram",
+      categoria: "notificacao",
+      tags: ["telegram", "pergunta", "botoes"],
+      resumo: "Faz perguntas interativas com opções via Telegram",
+      efeito: "externo",
+      exposicao: "fixa",
+      aprovacao: "dispensada",
       description:
-        "Ask the user one to four questions on Telegram, each with two to four options as buttons (single choice or multiSelect) and a button to type a free text answer. Same shape as Claude Code's AskUserQuestion. Sends one message per question and returns immediately with a question id in status pending. The question never expires unless expires_in_minutes is given. Poll telegram_get_question until the status is no longer pending.",
+        "Ask one to four questions on Telegram (2-4 option buttons each, single or multiSelect, plus free text), like AskUserQuestion. Never expires unless expires_in_minutes. With wait_seconds it blocks until answered and returns {id,status,answers}; otherwise, or if unanswered, returns pending with the id: use telegram_get_question.",
       inputSchema: {
         type: "object",
         properties: {
@@ -298,16 +380,18 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
           },
           urgent: {
             type: "boolean",
-            description: "If true, bypasses quiet hours.",
+            description: "Bypass quiet hours.",
           },
           silent: {
             type: "boolean",
-            description: "If true, sends silently without notification sound.",
+            description: "Send without sound.",
           },
           chat_id: {
             type: "string",
-            description: "Target Telegram Chat ID (defaults to owner chat ID).",
+            description: "Chat ID (default: owner).",
           },
+          wait_seconds: { type: "number", description: waitDescription },
+          verbose: verboseProperty,
         },
         required: ["questions"],
         additionalProperties: false,
@@ -326,7 +410,12 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
             silent: Boolean(args.silent),
             expiresInMinutes: typeof args.expires_in_minutes === "number" ? args.expires_in_minutes : undefined,
           });
-          return jsonResult({ success: true, ...result });
+          const waitSeconds = clampWait(args.wait_seconds, maxWait);
+          if (waitSeconds > 0 && result.id) {
+            const answered = await service.questions.get(result.id, waitSeconds);
+            if (answered) return args.verbose === true ? jsonResult({ success: true, ...answered }) : compactResult(slimQuestion(answered));
+          }
+          return args.verbose === true ? jsonResult({ success: true, ...result }) : compactResult({ id: result.id, status: "pending" });
         } catch (err) {
           return errorResult(err);
         }
@@ -335,8 +424,13 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
     {
       name: "telegram_get_question",
       title: "Get Telegram Question Answers",
+      categoria: "notificacao",
+      tags: ["telegram", "pergunta", "respostas"],
+      resumo: "Obtém respostas de pergunta feita no Telegram",
+      efeito: "leitura",
+      exposicao: "indice",
       description:
-        "Check a question asked with telegram_ask_question. Waits up to 25 seconds for the answers. When answered, returns answers keyed by question text: the chosen label, a list of labels for multiSelect, or the typed text; free_text marks the questions answered with typed text. Call repeatedly until status is no longer pending.",
+        "Get a question's answers (keyed by question text), waiting up to wait seconds. Returns {id,status,answers}; pending means unanswered.",
       inputSchema: {
         type: "object",
         properties: {
@@ -346,8 +440,9 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
           },
           wait: {
             type: "number",
-            description: "Seconds to wait for the answers (max 25s, default 25s).",
+            description: `Seconds to wait (max ${maxWait}, default ${DEFAULT_WAIT_SECONDS}).`,
           },
+          verbose: verboseProperty,
         },
         required: ["id"],
         additionalProperties: false,
@@ -355,12 +450,12 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
       handler: async (args: Args): Promise<HubToolResult> => {
         try {
           const id = typeof args.id === "string" ? args.id : "";
-          const wait = typeof args.wait === "number" ? Math.min(25, Math.max(0, args.wait)) : 25;
+          const wait = clampWait(args.wait, maxWait, DEFAULT_WAIT_SECONDS);
           const question = await service.questions.get(id, wait);
           if (!question) {
             return errorResult(new Error(t("question.error.notFound", { id })));
           }
-          return jsonResult({ success: true, ...question });
+          return args.verbose === true ? jsonResult({ success: true, ...question }) : compactResult(slimQuestion(question));
         } catch (err) {
           return errorResult(err);
         }
@@ -369,6 +464,12 @@ export function buildTools(service: GatewayService, templatesAvailable: boolean)
     {
       name: "telegram_resolve_question",
       title: "Resolve Telegram Question",
+      categoria: "notificacao",
+      tags: ["telegram", "pergunta", "resolver"],
+      resumo: "Encerra pergunta pendente do Telegram",
+      efeito: "externo",
+      exposicao: "indice",
+      aprovacao: "dispensada",
       description:
         "End a pending question from the agent or terminal: the user answered on the PC (answered_elsewhere) or the question was interrupted. Updates the Telegram messages to the final status and removes the buttons, so a message never stays at waiting after the decision was made elsewhere.",
       inputSchema: {

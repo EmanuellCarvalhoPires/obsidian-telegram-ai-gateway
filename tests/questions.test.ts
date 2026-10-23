@@ -701,7 +701,10 @@ describe("questions: tools and routes", () => {
     );
     const ask = buildTools(service, true).find((tool) => tool.name === "telegram_ask_question");
     expect((ask?.inputSchema as any).required).toEqual(["questions"]);
-    expect(ask?.description).toContain("never expires");
+    expect(ask?.description).toContain("Never expires");
+    expect(ask?.description).toContain("wait_seconds");
+    expect((ask?.inputSchema as any).properties.wait_seconds).toBeDefined();
+    expect((ask?.inputSchema as any).properties.verbose).toBeDefined();
   });
 
   it("registers the three routes next to the approval routes", () => {
@@ -715,24 +718,59 @@ describe("questions: tools and routes", () => {
     const tools = new Map(buildTools(service, false).map((tool) => [tool.name, tool]));
 
     const asked = await tools.get("telegram_ask_question")!.handler({ questions: [COLORS, SIZES], title: "T" }, ctx);
-    const { id } = asked.structuredContent as any;
-    expect(asked.structuredContent).toMatchObject({ success: true, status: "pending", messages: 2 });
+    const { id } = JSON.parse((asked.content[0] as any).text);
+    expect(asked.structuredContent).toBeUndefined();
+    expect(JSON.parse((asked.content[0] as any).text)).toEqual({ id, status: "pending" });
+    const askedVerbose = await tools.get("telegram_ask_question")!.handler({ questions: [COLORS], verbose: true }, ctx);
+    expect(askedVerbose.structuredContent).toMatchObject({ success: true, status: "pending", messages: 1 });
 
     await press(id, 0, "x");
     const pending = await tools.get("telegram_get_question")!.handler({ id, wait: 0 }, ctx);
-    expect(pending.structuredContent).toMatchObject({ status: "pending", answers: {} });
+    expect(JSON.parse((pending.content[0] as any).text)).toEqual({ id, status: "pending" });
 
     const resolved = await tools.get("telegram_resolve_question")!.handler({ id, status: "answered_elsewhere" }, ctx);
     expect(resolved.structuredContent).toMatchObject({ success: true });
 
     const final = await tools.get("telegram_get_question")!.handler({ id, wait: 0 }, ctx);
-    expect(final.structuredContent).toMatchObject({ status: "answered", decided_by: "resolve" });
+    expect(JSON.parse((final.content[0] as any).text)).toMatchObject({ id, status: "answered", answers: expect.any(Object) });
+    const finalVerbose = await tools.get("telegram_get_question")!.handler({ id, wait: 0, verbose: true }, ctx);
+    expect(finalVerbose.structuredContent).toMatchObject({ status: "answered", decided_by: "resolve" });
 
     const missing = await tools.get("telegram_get_question")!.handler({ id: "qst_nope", wait: 0 }, ctx);
     expect(missing.isError).toBe(true);
     const invalid = await tools.get("telegram_ask_question")!.handler({ questions: [] }, ctx);
     expect(invalid.isError).toBe(true);
     expect((invalid.content[0] as any).text).toContain("1 to 4 questions");
+  });
+
+  it("wait_seconds blocks until the question is answered and the approval tool is slim", async () => {
+    const { service, press, clock, questionStore } = setup();
+    const tools = new Map(buildTools(service, false).map((tool) => [tool.name, tool]));
+
+    const p = tools.get("telegram_ask_question")!.handler({ questions: [COLORS], wait_seconds: 120 }, ctx);
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+    const id = questionStore.newestPending()!.id;
+    await press(id, 0, "o1");
+    const done = JSON.parse(((await p).content[0] as any).text);
+    expect(done).toMatchObject({ id, status: "answered" });
+    expect(done.answers).toBeDefined();
+
+    const ap = tools.get("telegram_ask_approval")!;
+    const waiting = ap.handler({ message: "ok?", wait_seconds: 60 }, ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    const pending = (service as any).deps.store.newestPending();
+    await service.resolveApproval({ id: pending.id, status: "approved", choice: "Aprovar" });
+    expect(JSON.parse(((await waiting).content[0] as any).text)).toEqual({ id: pending.id, status: "approved", choice: "Aprovar" });
+
+    const timeout = ap.handler({ message: "again?", wait_seconds: 5 }, ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    clock.advance(6000);
+    const res = JSON.parse(((await timeout).content[0] as any).text);
+    expect(res.status).toBe("pending");
+    expect(Object.keys(res).sort()).toEqual(["id", "status"]);
+    const got = await tools.get("telegram_get_approval")!.handler({ id: res.id, wait: 0, verbose: true }, ctx);
+    expect(got.structuredContent).toMatchObject({ id: res.id, status: "pending", options: expect.any(Array) });
   });
 
   it("asks, reads and resolves through the routes", async () => {

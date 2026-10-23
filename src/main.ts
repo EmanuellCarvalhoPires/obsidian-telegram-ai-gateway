@@ -187,7 +187,7 @@ export default class TelegramAIGatewayPlugin extends Plugin {
         routes: buildRoutes(this.gatewayService),
         tools: buildTools(this.gatewayService, this.gatewayService.isTemplatesAvailable()),
         instructions:
-          "Send Telegram notifications and interactive approval requests with buttons. For approvals, call telegram_ask_approval, then repeatedly poll telegram_get_approval until the status changes from pending. Use telegram_resolve_approval when deciding from chat or terminal. To ask the user real questions (one to four, with option buttons, multiple choice and typed answers), call telegram_ask_question, then poll telegram_get_question until the status changes from pending; questions never expire unless expires_in_minutes is given. Use telegram_resolve_question when the user answered somewhere else.",
+          "Send Telegram notifications and interactive approval requests with buttons. For approvals, call telegram_ask_approval with wait_seconds to block until the user decides, or without it and then call telegram_get_approval (it waits up to wait seconds); only call again if the status is still pending. Use telegram_resolve_approval when deciding from chat or terminal. To ask the user real questions (one to four, with option buttons, multiple choice and typed answers), call telegram_ask_question the same way (wait_seconds, then telegram_get_question); questions never expire unless expires_in_minutes is given. Use telegram_resolve_question when the user answered somewhere else.",
       }),
       onStatus: () => {
         this.updateStatusBar();
@@ -205,10 +205,14 @@ export default class TelegramAIGatewayPlugin extends Plugin {
         // Waiting for the first /start: poll until the owner chat is known
         this.poller.ensureRunning();
 
+        // Sync tool index (API 1.1 tools.db)
+        this.syncToolIndex();
+
         // Listen for service changes (templates, secrets)
         api.onServiceChange((name: string) => {
           if (name === TEMPLATES_SERVICE) {
             api.updateTools(MODULE_ID, buildTools(this.gatewayService, this.gatewayService.isTemplatesAvailable()));
+            this.syncToolIndex();
             this.settingTab?.refresh();
           }
           if (name === SECRETS_SERVICE) {
@@ -395,5 +399,26 @@ export default class TelegramAIGatewayPlugin extends Plugin {
       setIcon(this.statusIconEl, "alert-circle");
       this.statusTextEl.setText("Telegram: offline");
     }
+  }
+  private syncToolIndex(): void {
+    const api = this.connector?.getApi();
+    if (!api?.toolIndex) return;
+    const tools = buildTools(this.gatewayService, this.gatewayService.isTemplatesAvailable());
+    const entries = tools.map((t) => ({
+      name: t.name,
+      title: t.title,
+      description: t.description,
+      inputSchema: t.inputSchema,
+      annotations: t.annotations,
+      categoria: t.categoria,
+      tags: t.tags,
+      resumo: t.resumo,
+      efeito: t.efeito,
+      exposicao: t.exposicao,
+      aprovacao: t.aprovacao,
+    }));
+    api.toolIndex.sync(MODULE_ID, entries).catch((err: unknown) => {
+      console.error("[Telegram AI Gateway] Could not sync the tool index", err);
+    });
   }
 }

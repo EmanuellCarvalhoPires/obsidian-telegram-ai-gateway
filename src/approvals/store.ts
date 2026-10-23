@@ -3,7 +3,7 @@ import type { Clock, TimerHandle } from "../util/clock";
 import { isRecord } from "../util/guards";
 import type { Approval, ApprovalOption, ApprovalStatus, DecisionSource, PersistedApproval } from "./types";
 
-export const MAX_WAIT_SECONDS = 25;
+export const MAX_WAIT_SECONDS = 300;
 const MAX_DECIDED = 50;
 const DECIDED_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MAX_PENDING = 200;
