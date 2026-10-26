@@ -1,6 +1,6 @@
 {
   "name": "obsidian-telegram-ai-gateway",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Send notifications and approval requests with buttons to Telegram from AI agents and scripts, with strict security limits.",
   "main": "main.js",
   "private": true,
